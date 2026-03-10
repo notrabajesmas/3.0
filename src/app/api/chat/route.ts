@@ -1,4 +1,3 @@
-import ZAI from 'z-ai-web-dev-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
 interface Message {
@@ -18,7 +17,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const zai = await ZAI.create();
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+    if (!GROQ_API_KEY) {
+      return NextResponse.json(
+        { error: 'GROQ_API_KEY no configurada. Agrega tu API key en las variables de entorno de Vercel.' },
+        { status: 500 }
+      );
+    }
 
     const systemMessage: Message = {
       role: 'system',
@@ -163,13 +169,32 @@ PASO ACTUAL: ${currentStep}`
 
     const allMessages = [systemMessage, ...messages];
 
-    const completion = await zai.chat.completions.create({
-      messages: allMessages,
-      temperature: 0.8,
-      max_tokens: 2500
+    // Llamar a Groq API directamente
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: allMessages,
+        temperature: 0.8,
+        max_tokens: 2500
+      })
     });
 
-    const assistantMessage = completion.choices[0]?.message?.content;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Groq API Error:', errorText);
+      return NextResponse.json(
+        { error: 'Error con la API de Groq. Verifica tu API key.', details: errorText },
+        { status: 500 }
+      );
+    }
+
+    const data = await response.json();
+    const assistantMessage = data.choices?.[0]?.message?.content;
 
     if (!assistantMessage) {
       return NextResponse.json(
